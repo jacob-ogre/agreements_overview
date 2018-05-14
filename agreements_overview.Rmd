@@ -1,0 +1,278 @@
+---
+title: "Section 10 agreements overview"
+author: "Jacob Malcom"
+output: 
+  flexdashboard::flex_dashboard:
+    storyboard: true
+    navbar:
+      - { title: "Working papers", href: "https://defend-esc-dev.org/working_papers", align: right }
+      - { title: "ESC Dev.", href: "https://defend-esc-dev.org/", align: right }
+    social: menu
+    source: embed
+    theme: yeti
+    css: _styles/ROAR_dash_style.css
+editor_options: 
+  chunk_output_type: console
+---
+<script async defer src="https://hypothes.is/embed.js"></script>
+
+```{r setup, include=FALSE}
+library(d3wordcloud)
+library(dplyr)
+library(flexdashboard)
+library(highcharter)
+library(plotly)
+library(stringr)
+library(tm)
+library(viridisLite)
+library(viridis)
+library(ecosscraper)
+library(tidyverse)
+library(ggthemes)
+load("data/cons_agmt.rda")
+# data(cons_agmt)
+```
+
+### Section 10(a)(1)(B) of the ESA establishes the framework for threatened and endangered species conservation on non-federal lands.
+
+```{r}
+htmltools::HTML("<iframe src='https://ecos.fws.gov/tess_public/conservationPlan/' width='100%' height='100%'></iframe>")
+```
+
+***
+
+##### Section 10 conservation agreements serve a basic purpose: to permit non-federal landowners to take threatened and endangered species in return for conservation actions that ostensibly create a net conservation benefit. The U.S. Fish and Wildlife Service's ECOS website is a portal to information about ESA-listed species and, embedded at left, conservation agreements for non-federal lands. __Habitat Conservation Plans (HCPs)__ accompany non-federal activities that will result in the [take](https://www.fws.gov/Midwest/endangered/glossary/index.html) of ESA-listed species. __Safe Harbor Agreements (SHAs)__ are voluntary agreements for non-federal landowners to contribute to the conservation of ESA-listed species but not be required to take actions beyond the agreement. __Candidate Conservation Agreements (CCA; with assurances, CCAAs)__ address conservation actions for species that are considered candidates for listing under the ESA. CCAAs add assurances that landowners won't be subject to resource use restrictions if the species becomes listed under the ESA, if certain actions are taken during candidacy.
+
+### What are the most common types of agreements, and where are they?
+
+```{r}
+ag_type <- cons_agmt$Agreement_Type %>%
+             table() %>%
+             sort(decreasing = TRUE) %>%
+             as.data.frame()
+ag_type$Var1 <- row.names(ag_type)
+names(ag_type)[1] <- "Freq"
+ag_type$Var1 <- gsub(x = ag_type$Var1, 
+                     pattern = "Habitat Conservation Plan",
+                     replacement = "HCP")
+ag_type$Var1 <- gsub(x = ag_type$Var1, 
+                     pattern = "Safe Harbor Agreement",
+                     replacement = "SHA")
+ag_type$Var1 <- gsub(x = ag_type$Var1, 
+                     pattern = "Candidate Conservation Agreement with Assurances",
+                     replacement = "CCAA")
+ag_type$Var1 <- gsub(x = ag_type$Var1, 
+                     pattern = "Candidate Conservation Agreement",
+                     replacement = "CCA")
+
+states <- unlist(cons_agmt$States_ls) %>%
+            table() %>%
+            sort(decreasing = TRUE) %>%
+            head(10) %>%
+            as.data.frame()
+names(states) <- "Freq"
+
+plot_a <- plot_ly(x = ag_type$Var1,
+                  y = ag_type$Freq,
+                  type = "bar",
+                  marker = list(color = substr(viridis(1), 0, 7))) %>%
+          layout(xaxis = list(title = ""), 
+                 yaxis = list(title = "# agreements"))
+
+plot_c <- plot_ly(x = row.names(states),
+                  y = states$Freq,
+                  type = "bar",
+                  marker = list(color = substr(viridis(1), 0, 7))) %>%
+          layout(xaxis = list(title = ""), 
+                 yaxis = list(title = ""))
+
+subplot(plot_a, plot_c, nrows = 1)
+
+```
+
+***
+
+##### HCPs are, numerically, the most used type of section 10 agreement. As we'll see later, the high abundance of HCPs is 'offset' by the distribution of area covered. The geography of public lands and of social norms mean that the geography of section 10 agreements is (strongly) biased toward the southern U.S. This isn't terribly surprising.
+
+
+### What is the area - in acres - of these agreements?
+
+```{r}
+areas <- unlist(lapply(cons_agmt$Acres_Covered_num, FUN = sum, na.rm = TRUE))
+ag_type <- cons_agmt$Agreement_Type
+ag_type <- gsub(x = ag_type, 
+                pattern = "Habitat Conservation Plan",
+                replacement = "HCP")
+ag_type <- gsub(x = ag_type, 
+                pattern = "Safe Harbor Agreement",
+                replacement = "SHA")
+ag_type <- gsub(x = ag_type, 
+                pattern = "Candidate Conservation Agreement with Assurances",
+                replacement = "CCAA")
+ag_type <- gsub(x = ag_type, 
+                pattern = "Candidate Conservation Agreement",
+                replacement = "CCA")
+
+plot_a <- plot_ly(x = log10(areas),
+                  type = "histogram",
+                  marker = list(color = substr(viridis(1), 0, 7))) %>%
+          layout(xaxis = list(title = "Area (log10 acres)"), 
+                 yaxis = list(title = "# agreements"))
+
+plot_b <- plot_ly(x = ag_type,
+                  y = log10(areas),
+                  type = "box",
+                  marker = list(color = substr(viridis(1), 0, 7))) %>%
+          layout(xaxis = list(title = ""), 
+                 yaxis = list(title = "Area (log10 acres)"))
+
+subplot(plot_a, plot_b, nrows = 1)
+
+```
+
+***
+
+##### The areas covered by the full set of agreements spans ten orders of magnitude, from 0.01 ac. to over 161 million ac., with a median area of just 8 ac. (mean = 935,400). This low value is driven by the large number of small HCPs (49% <= 5 ac., as discussed before).
+
+> #####Notice the log10 transformation of the areas, which is necessary to get a decent view of the data.
+
+
+### What is the duration of these agreements?
+
+```{r}
+reasonable <- cons_agmt[cons_agmt$Duration_Years <= 100, ] 
+reasonable$Agreement_Type <- gsub(x = reasonable$Agreement_Type, 
+                     pattern = "Habitat Conservation Plan",
+                     replacement = "HCP")
+reasonable$Agreement_Type <- gsub(x = reasonable$Agreement_Type, 
+                     pattern = "Safe Harbor Agreement",
+                     replacement = "SHA")
+reasonable$Agreement_Type <- gsub(x = reasonable$Agreement_Type, 
+                     pattern = "Candidate Conservation Agreement with Assurances",
+                     replacement = "CCAA")
+reasonable$Agreement_Type <- gsub(x = reasonable$Agreement_Type, 
+                     pattern = "Candidate Conservation Agreement",
+                     replacement = "CCA")
+
+plot_a <- plot_ly(x = reasonable$Duration_Years,
+                  type = "histogram",
+                  marker = list(color = substr(viridis(1), 0, 7))) %>%
+          layout(xaxis = list(title = "Duration (years)"), 
+                 yaxis = list(title = "# agreements"),
+                 height = 600)
+
+plot_b <- plot_ly(x = reasonable$Agreement_Type,
+                  y = reasonable$Duration_Years,
+                  type = "box",
+                  marker = list(color = substr(viridis(1), 0, 7))) %>%
+          layout(xaxis = list(title = ""), 
+                 yaxis = list(title = ""))
+
+subplot(plot_a, plot_b, nrows = 1)
+
+```
+
+***
+
+##### Even though there are a lot of agreements, nearly half (49%) have been conservation agreements lasting <= 5 years. Across all agreement types we see there are common durations: 5, 10, 20, 30, 50, and 99 (or 100) years...people tend to like nice, round numbers for their agreements. 
+
+##### We also see that durations vary systematically by agreement type. The most abundant agreements, HCPs, have one of the shortest median durations at just five years. That's because many HCPs are deemed "low-effect" HCPs; for many of these, the applicant is simply seeking a permit to take listed species while their (non-federal) action is underway, e.g., during construction. Once the action is completed there is little risk of taking listed species (they're gone). But these are not all of the agreements, and SHAs in particular tend to have longer durations (median = 30y). 
+
+
+### How have agreements changed through time in terms of number, area covered, and duration?
+
+```{r}
+years <- as.numeric(format(cons_agmt$Date_Agmt_Permit, "%Y"))
+
+yr_cat <- rep(NA, length(years))
+for(i in 1:length(years)) {
+  if(!is.na(years[i]) & years[i] < 1991) yr_cat[i] <- 1983 else
+  if(!is.na(years[i]) & years[i] < 1996) yr_cat[i] <- 1991 else
+  if(!is.na(years[i]) & years[i] < 2001) yr_cat[i] <- 1996 else
+  if(!is.na(years[i]) & years[i] < 2006) yr_cat[i] <- 2001 else
+  if(!is.na(years[i]) & years[i] < 2011) yr_cat[i] <- 2006 else
+  if(!is.na(years[i]) & years[i] < 2016) yr_cat[i] <- 2011 else
+  yr_cat[i] <- NA
+}
+# yr_cat <- as.factor(yr_cat)
+
+duration <- ifelse(cons_agmt$Duration_Years > 100,
+                   100,
+                   cons_agmt$Duration_Years)
+
+l10_area <- log10(areas + 0.01)
+
+type <- cons_agmt$Agreement_Type
+
+data <- data.frame(yr_cat, duration, l10_area, years, type,
+                   stringsAsFactors = FALSE) %>%
+  filter(!is.na(years))
+
+cols <- substr(viridis(5), 0, 7)
+
+ggplot(data,
+       aes(x = years,
+           y = l10_area, 
+           size = duration, 
+           fill = type)) +
+  geom_point(shape = 21, alpha = 0.7) +
+  labs(x = "", y = "Area (log10 acres)") +
+  scale_fill_viridis(discrete = TRUE) +
+  theme_hc(base_size = 16) +
+  theme(legend.position = "right", legend.direction = "vertical") +
+  theme(legend.text=element_text(size=10))
+
+a_plot <- plot_ly(x = data$years, 
+                  y = data$l10_area, 
+                  color = data$type, 
+                  colors = cols[c(1:2,5,4)],
+                  size = data$duration,
+                  hoverinfo = "text",
+                  text = paste0("Duration: ", data$duration, " years<br>", 
+                                "Area: ", 10^data$l10_area, " acres"),
+                  mode = "markers") %>%
+          layout(xaxis = list(title = ""), 
+                 yaxis = list(title = "Covered Area (log10 acres)"))
+# a_plot
+
+ggplot(data, aes(x = years, fill = type)) +
+  geom_bar() +
+  scale_fill_viridis(discrete = TRUE) +
+  theme_hc(base_size = 16) +
+  theme(legend.position = "right", legend.direction = "vertical") +
+  theme(legend.text=element_text(size=10))
+
+b_plot <- plot_ly(x = data$years, 
+                  type = "histogram", 
+                  name = "Histogram",
+                  marker = list(color = cols[3])) %>%
+          layout(xaxis = list(title = "Agreement Start Year"), 
+                 yaxis = list(title = "Number of Agreements"))
+# b_plot
+
+subplot(a_plot, b_plot, nrows = 2) # %>%
+
+# mod1 <- lm(log(duration + 0.5) ~ years, data = data)
+# mod1b <- lm(duration + 0.5 ~ years, data = data)
+# summary(mod1)
+# summary(mod1b)
+# hist(resid(mod1))
+# 
+# mod2 <- lm(l10_area ~ years, data = data)
+# summary(mod2)
+
+```
+ 
+***
+
+##### Each of the ~1,400 points in the plot represents a single agreement, and the size of each point is proportional to the duration of the agreement. Although not glaringly apparent in this plot, there is a strong relationship between year of the agreement and agreement duration, with durations getting 6 months longer on average for each that passed between 1983 and 2015. And although glancing at the figure suggests there might be a positive relationship between year and area covered, that is not statistically supported.
+
+##### The chart of agreements through time illustrates two interesting results. First, the adoption of the ["No surprises"](https://www.fws.gov/endangered/what-we-do/rules-and-regulations.html) policy in 1994, which encouraged greater use of HCPs by providing certain assurances to land owners. The period 2000-2008 saw a substantial number of HCPs (many small) as well as an uptick in SHAs and CCAs. The number of agreements since 2009 has been noticeably lower than preceding periods.
+ 
+### Conclusion
+
+<h5 style='padding-left: 20%; padding-right: 25%; line-height: 125%'>Over 1,400 agreements have been made under section 10 of the ESA since 1983, and there is a lot that can be learned from those agreements and their implementation. But even the 'metadata' that is available through ECOS has provided some insights. 
+
+_First_, the large number of very small HCPs might be considered disconcerting, though the reason why isn't immediately apparent. We want everyone to comply with the ESA, which means getting Incidental Take Permits when actions don't have a federal nexus. But a key reason to aim for high compliance rates is so that we have a solid understanding of species' status. To do so, that means FWS needs to track how much incidental take they have permitted, and use that data to make current and future permitting decisions. The 'disconcerting' part of this is that even though there were hundreds of small HCPs chipping away at species and their habitats, we know that FWS does not track authorized take. That, in turn, means they cannot account for take authorized through HCPs when reviewing a species' status or evaluating other actions, e.g., in section 7 consultation. So an untold amount of time and money was spent crafting and implementing these agreements, and increased compliance, but the conservation reason for the program is, in all likelihood, unaddressed. __FWS can remedy this by implementing a system to track authorized take, and record take authorized through section 10 agreements in this system.__ Doing so will increase the conservation return from all of the investment in HCPs, HCPs, and CCA/As (as well as from section 7...but that's another story).
+
+_Second_, there are other lessons beyond those touched on in preceding sections. This list of section 10 agreements was collected by 'scraping' the ECOS pages for >1,600 ESA-listed species and candidates. When we performed a similar scraping by visiting each link on the ECOS agreements home page, there were 500 fewer agreements found (!). There were also 76 agreements on the ECOS agreements page that were not linked to species pages; interestingly, none of these 76 agreements were actually available to the public. Unfortunately, many people - including Congress - use numbers of agreements derived from the ECOS agreements portal...but the data there is incomplete. __FWS should work to ensure that all of their information is available in 'all the right places,' which means linked to the main ECOS agreements page and the pages for covered species.__ Not only will it help 'outsiders' know what's going on, a coherent system will help the Service understand what they have been doing. </h5>
