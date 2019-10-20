@@ -1,20 +1,17 @@
 ---
 title: "Section 10 agreements overview"
-author: "Jacob Malcom"
+author: "Center for Conservation Innovation"
 output: 
   flexdashboard::flex_dashboard:
     storyboard: true
     navbar:
-      - { title: "Working papers", href: "https://defend-esc-dev.org/working_papers", align: right }
-      - { title: "ESC Dev.", href: "https://defend-esc-dev.org/", align: right }
+      - { title: "CCI", href: "https://cci.defenders.org/", align: right }
     social: menu
     source: embed
     theme: yeti
-    css: _styles/ROAR_dash_style.css
 editor_options: 
   chunk_output_type: console
 ---
-<script async defer src="https://hypothes.is/embed.js"></script>
 
 ```{r setup, include=FALSE}
 library(d3wordcloud)
@@ -158,8 +155,7 @@ plot_a <- plot_ly(x = reasonable$Duration_Years,
                   type = "histogram",
                   marker = list(color = substr(viridis(1), 0, 7))) %>%
           layout(xaxis = list(title = "Duration (years)"), 
-                 yaxis = list(title = "# agreements"),
-                 height = 600)
+                 yaxis = list(title = "# agreements"))
 
 plot_b <- plot_ly(x = reasonable$Agreement_Type,
                   y = reasonable$Duration_Years,
